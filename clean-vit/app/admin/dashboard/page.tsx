@@ -1,28 +1,26 @@
-import prisma from "@/lib/prisma"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import AdminDashboardClient from "@/components/admin-dashboard-client"
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+
 export default async function AdminDashboardPage() {
-    const userId = cookies().get("userId")?.value
+    const token = cookies().get("token")?.value
     const role = cookies().get("role")?.value
 
-    if (!userId || role !== "ADMIN") {
+    if (!token || role !== "admin") {
         redirect("/admin/login")
     }
 
-    // Fetch stats
-    const totalRequests = await prisma.request.count()
-    const pendingRequests = await prisma.request.count({ where: { status: "PENDING" } })
-    const completedRequests = await prisma.request.count({ where: { status: "COMPLETED" } })
-    const activeCleaners = await prisma.cleanerProfile.count()
+    try {
+        const res = await fetch(`${API_URL}/api/admin/stats`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store"
+        })
+        const stats = await res.json()
 
-    const stats = {
-        totalRequests,
-        pendingRequests,
-        completedRequests,
-        activeCleaners
+        return <AdminDashboardClient stats={stats} />
+    } catch (e) {
+        return <AdminDashboardClient stats={{ totalRequests: 0, pendingRequests: 0, completedRequests: 0, activeCleaners: 0 }} />
     }
-
-    return <AdminDashboardClient stats={stats} />
 }
