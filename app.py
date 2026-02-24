@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, send_from_directory, render_template, g
+from flask_cors import CORS
 import os
 import io
 import base64
@@ -22,6 +23,12 @@ except ImportError:
 # ----------------- CONFIGURATION -----------------
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = 'cleanvit_secret_key_2024_vitvellore'
+
+# Enable CORS for API routes (allows Vercel frontend to call this backend)
+CORS(app, resources={r"/api/*": {"origins": [
+    "http://localhost:3000",
+    "https://*.vercel.app"
+]}}, supports_credentials=True)
 
 # Load environment variables (Create a .env file locally)
 load_dotenv()

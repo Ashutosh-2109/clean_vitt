@@ -1,21 +1,30 @@
 "use server"
 
-import { z } from "zod"
-import prisma from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
-import { createHash } from "crypto"
 
-function hashPassword(password: string): string {
-    return createHash("sha256").update(password).digest("hex")
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getToken(): string | undefined {
+    return cookies().get("token")?.value
 }
 
-// Student Actions
+function authHeaders() {
+    const token = getToken()
+    return {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+}
+
+// ─── Student Actions ──────────────────────────────────────────────────────────
+
 export async function studentSignup(formData: FormData) {
     const email = formData.get("email") as string
     const password = formData.get("password") as string
     const name = formData.get("name") as string
-    const regNo = formData.get("regNo") as string
     const block = formData.get("block") as string
     const roomNo = formData.get("roomNo") as string
 
@@ -24,53 +33,15 @@ export async function studentSignup(formData: FormData) {
     }
 
     try {
-        const existingUser = await prisma.user.findUnique({ where: { email } })
-        if (existingUser) return { error: "User already exists" }
-
-        const hashedPassword = hashPassword(password)
-
-        await prisma.$transaction(async (tx) => {
-            let group = await tx.roomGroup.findUnique({
-                where: {
-                    block_roomNo: {
-                        block,
-                        roomNo
-                    }
-                }
-            })
-
-            if (!group) {
-                group = await tx.roomGroup.create({
-                    data: {
-                        block,
-                        roomNo
-                    }
-                })
-            }
-
-            const user = await tx.user.create({
-                data: {
-                    email,
-                    passwordHash: hashedPassword,
-                    name,
-                    role: "STUDENT",
-                }
-            })
-
-            await tx.studentProfile.create({
-                data: {
-                    userId: user.id,
-                    regNo,
-                    block,
-                    roomNo,
-                    groupId: group.id
-                }
-            })
+        const res = await fetch(`${API_URL}/api/auth/student/signup-direct`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password, name, block, roomNumber: roomNo }),
         })
-
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Signup failed" }
     } catch (e) {
-        console.error(e)
-        return { error: "Failed to create account" }
+        return { error: "Could not connect to server" }
     }
 
     redirect("/student/login")
@@ -80,77 +51,64 @@ export async function studentLogin(formData: FormData) {
     const email = formData.get("email") as string
     const password = formData.get("password") as string
 
-    const user = await prisma.user.findUnique({
-        where: { email },
-        include: { studentProfile: true }
-    })
+    try {
+        const res = await fetch(`${API_URL}/api/auth/student/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Invalid credentials" }
 
-    if (!user || user.role !== "STUDENT" || hashPassword(password) !== user.passwordHash) {
-        return { error: "Invalid credentials" }
+        // Store JWT token and user info in cookies
+        cookies().set("token", data.token, { httpOnly: true, path: "/" })
+        cookies().set("role", "student", { path: "/" })
+        cookies().set("userName", data.user.name, { path: "/" })
+        cookies().set("userBlock", data.user.block, { path: "/" })
+        cookies().set("userRoom", data.user.roomNumber, { path: "/" })
+    } catch (e) {
+        return { error: "Could not connect to server" }
     }
-
-    cookies().set("userId", user.id)
-    cookies().set("role", "STUDENT")
 
     redirect("/student/dashboard")
 }
 
-export async function createCleaningRequest(groupId: string) {
-    try {
-        await prisma.request.create({
-            data: {
-                groupId,
-                status: "PENDING"
-            }
-        })
-        return { success: true }
-    } catch (e) {
-        return { error: "Failed to create request" }
-    }
-}
+// ─── Cleaner Actions ──────────────────────────────────────────────────────────
 
-// Cleaner Actions
 export async function cleanerLogin(formData: FormData) {
-    const email = formData.get("email") as string
+    const employeeId = formData.get("employeeId") as string
     const password = formData.get("password") as string
 
-    const user = await prisma.user.findUnique({
-        where: { email },
-        include: { cleanerProfile: true }
-    })
+    try {
+        const res = await fetch(`${API_URL}/api/auth/cleaner/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ employeeId, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Invalid credentials" }
 
-    if (!user || user.role !== "CLEANER" || hashPassword(password) !== user.passwordHash) {
-        return { error: "Invalid credentials" }
+        cookies().set("token", data.token, { httpOnly: true, path: "/" })
+        cookies().set("role", "cleaner", { path: "/" })
+        cookies().set("cleanerName", data.cleaner.name, { path: "/" })
+    } catch (e) {
+        return { error: "Could not connect to server" }
     }
-
-    cookies().set("userId", user.id)
-    cookies().set("role", "CLEANER")
 
     redirect("/cleaner/dashboard")
 }
 
 export async function acceptRequest(requestId: string) {
-    const cleanerId = cookies().get("userId")?.value
-    // Ideally verify session/role here too
-
-    const cleanerProfile = await prisma.cleanerProfile.findUnique({
-        where: { userId: cleanerId }
-    })
-
-    if (!cleanerProfile) return { error: "Cleaner profile not found" }
-
     try {
-        await prisma.request.update({
-            where: { id: requestId },
-            data: {
-                status: "IN_PROGRESS",
-                cleanerId: cleanerProfile.id,
-                acceptedAt: new Date()
-            }
+        const res = await fetch(`${API_URL}/api/requests/${requestId}/accept`, {
+            method: "PUT",
+            headers: authHeaders(),
         })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Failed to accept request" }
         return { success: true }
     } catch (e) {
-        return { error: "Failed to accept request" }
+        return { error: "Could not connect to server" }
     }
 }
 
@@ -159,85 +117,93 @@ export async function completeRequest(formData: FormData) {
     const secret = formData.get("secret") as string
 
     try {
-        const request = await prisma.request.findUnique({
-            where: { id: requestId }
+        const res = await fetch(`${API_URL}/api/requests/${requestId}/complete`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify({ qrData: secret }),
         })
-
-        if (!request) return { error: "Request not found" }
-
-        if (request.qrCodeSecret !== secret) {
-            return { error: "Invalid QR Code Secret" }
-        }
-
-        await prisma.request.update({
-            where: { id: requestId },
-            data: {
-                status: "COMPLETED",
-                completedAt: new Date()
-            }
-        })
-        return { success: true } // In a real app, maybe revalidatePath or redirect
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Failed to complete request" }
+        return { success: true }
     } catch (e) {
-        return { error: "Failed to complete request" }
+        return { error: "Could not connect to server" }
     }
 }
 
-// Admin Actions
+// ─── Student: Create Request ──────────────────────────────────────────────────
+
+export async function createCleaningRequest(groupId: string) {
+    try {
+        const res = await fetch(`${API_URL}/api/requests`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ type: "general", instructions: "" }),
+        })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Failed to create request" }
+        return { success: true, qrCode: data.qrCode }
+    } catch (e) {
+        return { error: "Could not connect to server" }
+    }
+}
+
+// ─── Admin Actions ────────────────────────────────────────────────────────────
+
 export async function adminLogin(formData: FormData) {
-    const email = formData.get("email") as string
+    const username = formData.get("username") as string
     const password = formData.get("password") as string
 
-    // Hardcoded admin for prototype or check DB
-    // For now, let's assume a DB user with role ADMIN exists
-    const user = await prisma.user.findUnique({
-        where: { email }
-    })
+    try {
+        const res = await fetch(`${API_URL}/api/auth/admin/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Invalid credentials" }
 
-    if (!user || user.role !== "ADMIN" || hashPassword(password) !== user.passwordHash) {
-        return { error: "Invalid credentials" }
+        cookies().set("token", data.token, { httpOnly: true, path: "/" })
+        cookies().set("role", "admin", { path: "/" })
+    } catch (e) {
+        return { error: "Could not connect to server" }
     }
-
-    cookies().set("userId", user.id)
-    cookies().set("role", "ADMIN")
 
     redirect("/admin/dashboard")
 }
 
 export async function registerCleaner(formData: FormData) {
-    const email = formData.get("email") as string
+    const employeeId = formData.get("employeeId") as string
     const password = formData.get("password") as string
     const name = formData.get("name") as string
-    const assignedBlock = formData.get("assignedBlock") as string
+    const blocks = formData.get("blocks") as string // comma separated e.g. "A,B"
 
     try {
-        const hashedPassword = hashPassword(password)
-
-        await prisma.$transaction(async (tx) => {
-            const user = await tx.user.create({
-                data: {
-                    email,
-                    passwordHash: hashedPassword,
-                    name,
-                    role: "CLEANER"
-                }
-            })
-
-            await tx.cleanerProfile.create({
-                data: {
-                    userId: user.id,
-                    assignedBlock
-                }
-            })
+        const res = await fetch(`${API_URL}/api/admin/cleaners`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({
+                employeeId,
+                name,
+                password,
+                blocks: blocks ? blocks.split(",").map((b) => b.trim()) : [],
+            }),
         })
+        const data = await res.json()
+        if (!res.ok) return { error: data.error || "Failed to register cleaner" }
+        return { success: true }
     } catch (e) {
-        return { error: "Failed to register cleaner" }
+        return { error: "Could not connect to server" }
     }
-
-    // revalidatePath("/admin/dashboard") // dynamic import or just let it refresh
 }
 
+// ─── Logout ───────────────────────────────────────────────────────────────────
+
 export async function logout() {
-    cookies().delete("userId")
+    cookies().delete("token")
     cookies().delete("role")
+    cookies().delete("userName")
+    cookies().delete("userBlock")
+    cookies().delete("userRoom")
+    cookies().delete("cleanerName")
     redirect("/")
 }
