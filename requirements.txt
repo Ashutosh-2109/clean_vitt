@@ -1,0 +1,12 @@
+flask
+flask-cors
+python-dotenv
+supabase
+bcrypt
+pyjwt
+qrcode
+pillow
+gunicorn
+opencv-python-headless
+numpy
+pyzbar
