@@ -100,14 +100,14 @@
                 </div>
             </div>
 
-            <!-- Cleaners Management -->
+            <!-- Employees Management -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Manage Cleaners</h3>
+                    <h3 class="card-title">Manage Employees</h3>
                     <button class="btn btn-primary btn-sm" onclick="openAddCleanerModal()">Add New</button>
                 </div>
                 <div class="requests-grid" id="cleaners-grid">
-                    <!-- Cleaners will be populated here -->
+                    <!-- Employees will be populated here -->
                 </div>
             </div>
 
@@ -150,18 +150,35 @@
         </div>
     </div>
 
-    <!-- Add Cleaner Modal -->
+    <!-- Add Employee Modal -->
     <div id="add-cleaner-modal" class="auth-card"
         style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; box-shadow: 0 10px 100px rgba(0,0,0,0.5); width: 90%; max-width: 400px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3 class="auth-title" style="font-size: 1.5rem; margin: 0;">Add Cleaner</h3>
+            <h3 class="auth-title" style="font-size: 1.5rem; margin: 0;">Add Employee</h3>
             <button onclick="closeAddCleanerModal()"
                 style="background: none; border: none; cursor: pointer; font-size: 1.5rem;">&times;</button>
         </div>
         <form id="add-cleaner-form">
             <div class="form-group">
-                <label class="form-label">Employee ID</label>
-                <input type="text" class="form-input" id="c-empid" placeholder="CLN00X" required>
+                <label class="form-label">Role</label>
+                <select class="form-select" id="c-role"
+                    style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: white; padding: 0.75rem 1rem; border-radius: 8px; width: 100%; transition: all 0.2s;"
+                    onchange="updateEmpIdPlaceholder()">
+                    <option value="CLN" style="background: var(--bg-color);">Cleaner</option>
+                    <option value="CAR" style="background: var(--bg-color);">Carpenter</option>
+                    <option value="ELE" style="background: var(--bg-color);">Electrician</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Employee ID (<span id="empid-prefix">CLN</span>)</label>
+                <div
+                    style="display: flex; align-items: center; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; overflow: hidden;">
+                    <span id="empid-prefix-display"
+                        style="padding: 0.75rem 1rem; background: rgba(0,0,0,0.2); color: var(--text-muted); border-right: 1px solid rgba(255,255,255,0.1); font-family: monospace;">CLN</span>
+                    <input type="text"
+                        style="flex: 1; background: transparent; border: none; color: white; padding: 0.75rem 1rem; outline: none; font-family: monospace;"
+                        id="c-empid" placeholder="001" required>
+                </div>
             </div>
             <div class="form-group">
                 <label class="form-label">Full Name</label>
@@ -175,7 +192,7 @@
                 <label class="form-label">Assigned Blocks (comma separated)</label>
                 <input type="text" class="form-input" id="c-blocks" placeholder="A, B, C" required>
             </div>
-            <button type="submit" class="btn btn-primary btn-block">Add Cleaner</button>
+            <button type="submit" class="btn btn-primary btn-block">Add Employee</button>
         </form>
     </div>
 
@@ -265,6 +282,13 @@
         function closeAddCleanerModal() {
             modal.style.display = 'none';
             form.reset();
+            updateEmpIdPlaceholder();
+        }
+
+        function updateEmpIdPlaceholder() {
+            const prefix = document.getElementById('c-role').value;
+            document.getElementById('empid-prefix').textContent = prefix;
+            document.getElementById('empid-prefix-display').textContent = prefix;
         }
 
         const profileModal = document.getElementById('cleaner-profile-modal');
@@ -461,10 +485,14 @@
 
                     const statusColor = c.is_active ? 'var(--success)' : 'var(--error)';
 
+                    let roleLabel = 'Cleaner';
+                    if (c.employee_id.startsWith('CAR')) roleLabel = 'Carpenter';
+                    if (c.employee_id.startsWith('ELE')) roleLabel = 'Electrician';
+
                     card.innerHTML = `
                         <div style="display:flex; justify-content:space-between; align-items:start">
                             <div>
-                                <div class="card-title">${c.name}</div>
+                                <div class="card-title">${c.name} <span style="font-size: 0.7rem; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; margin-left: 6px; color: var(--text-muted); text-transform: uppercase;">${roleLabel}</span></div>
                                 <div style="font-family:monospace; color:var(--text-muted); font-size:0.9rem;">${c.employee_id}</div>
                             </div>
                             <div style="width:10px; height:10px; border-radius:50%; background:${statusColor}; box-shadow:0 0 10px ${statusColor}"></div>
@@ -489,8 +517,12 @@
             const blocksStr = document.getElementById('c-blocks').value;
             const blocks = blocksStr.split(',').map(b => b.trim().toUpperCase()).filter(b => b);
 
+            const rolePrefix = document.getElementById('c-role').value;
+            const empNum = document.getElementById('c-empid').value;
+            const fullEmpId = rolePrefix + empNum;
+
             const data = {
-                employeeId: document.getElementById('c-empid').value,
+                employeeId: fullEmpId,
                 name: document.getElementById('c-name').value,
                 password: document.getElementById('c-password').value,
                 blocks: blocks
@@ -509,11 +541,11 @@
                 const result = await res.json();
 
                 if (res.ok) {
-                    showToast('Cleaner added successfully', 'success');
+                    showToast('Employee added successfully', 'success');
                     closeAddCleanerModal();
                     fetchCleaners();
                 } else {
-                    showToast(result.error || 'Failed to add cleaner', 'error');
+                    showToast(result.error || 'Failed to add employee', 'error');
                 }
             } catch (err) {
                 showToast('Failed to connect to server', 'error');

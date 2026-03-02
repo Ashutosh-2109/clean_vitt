@@ -87,9 +87,9 @@ def index():
 def student_page():
     return render_template('student.html', supabase_url=SUPABASE_URL, supabase_key=SUPABASE_KEY)
 
-@app.route('/cleaner')
-def cleaner_page():
-    return render_template('cleaner.html')
+@app.route('/employee')
+def employee_page():
+    return render_template('employee.html')
 
 @app.route('/admin')
 def admin_page():
@@ -377,17 +377,22 @@ def cleaner_login():
     except:
         blocks = []
         
+    # Determine precise role from prefix
+    role_type = 'cleaner'
+    if emp_id.startswith('CAR'): role_type = 'carpenter'
+    elif emp_id.startswith('ELE'): role_type = 'electrician'
+
     token = jwt.encode({
         'id': cleaner['id'],
         'employeeId': cleaner['employee_id'],
-        'role': 'cleaner',
+        'role': role_type,
         'blocks': blocks,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     }, app.secret_key, algorithm="HS256")
     
     return jsonify({
         'token': token,
-        'cleaner': {'id': cleaner['id'], 'name': cleaner['name'], 'blocks': blocks}
+        'cleaner': {'id': cleaner['id'], 'name': cleaner['name'], 'blocks': blocks, 'employeeId': cleaner['employee_id']}
     })
 
 @app.route('/api/auth/admin/login', methods=['POST'])
@@ -478,8 +483,8 @@ def get_requests():
         res = query.execute()
         return jsonify(res.data)
         
-    elif g.current_user['role'] == 'cleaner':
-        # Cleaners see accepted/completed
+    elif g.current_user['role'] in ['cleaner', 'carpenter', 'electrician']:
+        # Employees see accepted/completed
         # We need to join users to get student name. Supabase-py syntax:
         # .select('*, users(name)')
         res = supabase.table('requests').select('*, users(name)').eq('cleaner_id', g.current_user['id']).in_('status', ['in_progress', 'accepted', 'completed']).order('accepted_at', desc=True).execute()
@@ -501,13 +506,20 @@ def get_requests():
 @token_required
 def get_pending_requests():
     if not supabase: return jsonify({'error': 'Database not configured'}), 500
-    if g.current_user['role'] != 'cleaner': return jsonify({'error': 'Unauthorized'}), 403
+    role = g.current_user['role']
+    if role not in ['cleaner', 'carpenter', 'electrician']: return jsonify({'error': 'Unauthorized'}), 403
         
     blocks = g.current_user.get('blocks', [])
     if not blocks: return jsonify([])
         
-    # Supabase "in" filter for blocks
-    res = supabase.table('requests').select('*, users(name)').eq('status', 'pending').in_('block', blocks).order('created_at', desc=False).execute()
+    # Map role to request type
+    valid_types = []
+    if role == 'cleaner': valid_types = ['Normal Cleaning', 'Deep Cleaning']
+    elif role == 'carpenter': valid_types = ['Carpentry Issue']
+    elif role == 'electrician': valid_types = ['Electrical Issue']
+
+    # Supabase "in" filter for blocks and specific types
+    res = supabase.table('requests').select('*, users(name)').eq('status', 'pending').in_('block', blocks).in_('type', valid_types).order('created_at', desc=False).execute()
     
     result = []
     for r in res.data:
@@ -522,7 +534,7 @@ def get_pending_requests():
 @token_required
 def accept_request(req_id):
     if not supabase: return jsonify({'error': 'Database not configured'}), 500
-    if g.current_user['role'] != 'cleaner': return jsonify({'error': 'Unauthorized'}), 403
+    if g.current_user['role'] not in ['cleaner', 'carpenter', 'electrician']: return jsonify({'error': 'Unauthorized'}), 403
         
     supabase.table('requests').update({
         'status': 'in_progress',
@@ -536,7 +548,7 @@ def accept_request(req_id):
 @token_required
 def complete_request(req_id):
     if not supabase: return jsonify({'error': 'Database not configured'}), 500
-    if g.current_user['role'] != 'cleaner': return jsonify({'error': 'Unauthorized'}), 403
+    if g.current_user['role'] not in ['cleaner', 'carpenter', 'electrician']: return jsonify({'error': 'Unauthorized'}), 403
         
     data = request.json
     qr_data = data.get('qrData')

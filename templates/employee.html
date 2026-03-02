@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clean VIT - Employee Portal</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <!-- Auth Section -->
+    <div id="auth-section" class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <a href="/" class="auth-back">← Back to Home</a>
+                <h1 class="auth-title">Employee Login</h1>
+            </div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label class="form-label">Employee ID</label>
+                    <input type="text" class="form-input" id="emp-id" placeholder="CLN001" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section" class="dashboard" style="display: none;">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="sidebar-logo-icon" id="sidebar-icon">👷</div>
+                <div class="sidebar-logo-text" id="sidebar-title">Employee Portal</div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" onclick="showView('pending', this)">
+                    <div class="nav-icon"><i data-lucide="list"></i></div>
+                    Pending
+                </a>
+                <a href="#" class="nav-item" onclick="showView('active', this)">
+                    <div class="nav-icon"><i data-lucide="activity"></i></div>
+                    Active Jobs
+                </a>
+                <a href="#" class="nav-item" onclick="showView('history', this)">
+                    <div class="nav-icon"><i data-lucide="clock"></i></div>
+                    History
+                </a>
+            </nav>
+
+            <div class="sidebar-user">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebar-avatar">E</div>
+                    <div class="user-details">
+                        <div class="user-name" id="user-name">Employee Name</div>
+                        <div class="user-role" id="user-role-text">Employee</div>
+                    </div>
+                </div>
+                <div class="user-block" id="assigned-blocks">Blocks: A, B</div>
+                <button class="btn-logout" onclick="logout()">Sign Out</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="pending-view">
+                <header class="page-header">
+                    <h1 class="page-title">Pending Tasks</h1>
+                    <p class="page-subtitle">Accept tasks to start working</p>
+                </header>
+                <div class="requests-grid" id="pending-requests"></div>
+            </div>
+
+            <div id="active-view" style="display: none;">
+                <header class="page-header">
+                    <h1 class="page-title">My Active Jobs</h1>
+                    <p class="page-subtitle">Complete jobs by scanning QR codes</p>
+                </header>
+                <div class="requests-grid" id="active-requests"></div>
+            </div>
+
+            <div id="history-view" style="display: none;">
+                <header class="page-header">
+                    <h1 class="page-title">Job History</h1>
+                    <p class="page-subtitle">Past completed jobs and ratings</p>
+                </header>
+                <div class="requests-grid" id="history-requests"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <div id="reader" style="display: none;"></div>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        lucide.createIcons();
+        const API_URL = '/api';
+
+        // Supabase Init
+        let supabaseClient = null;
+
+        async function initSupabase() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
+
+                console.log("Supabase Client Initialized");
+
+                // Realtime Subscription
+                const channel = supabaseClient
+                    .channel('public:requests')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, payload => {
+                        console.log('Realtime Update Received:', payload);
+                        fetchJobs();
+                        showToast('New update received!', 'info');
+                    })
+                    .subscribe((status) => {
+                        console.log("Realtime Subscription Status:", status);
+                        if (status === 'SUBSCRIBED') {
+                            console.log("Successfully listening for changes...");
+                        }
+                        if (status === 'CHANNEL_ERROR') {
+                            console.error("Realtime Connection Error. Check Supabase 'Replication' settings.");
+                        }
+                    });
+
+            } catch (e) {
+                console.error("Supabase init failed", e);
+            }
+        }
+
+        initSupabase();
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+
+            let icon = 'info';
+            if (type === 'success') icon = 'check-circle';
+            if (type === 'error') icon = 'alert-circle';
+            if (type === 'warning') icon = 'alert-triangle';
+
+            toast.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i data-lucide="${icon}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            requestAnimationFrame(() => { toast.classList.add('show'); });
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => { toast.remove(); }, 300);
+            }, 3000);
+        }
+
+        async function login(e) {
+            e.preventDefault();
+            const employeeId = document.getElementById('emp-id').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch(`${API_URL}/auth/cleaner/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ employeeId, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    localStorage.setItem('cleaner_token', data.token);
+                    localStorage.setItem('cleaner', JSON.stringify(data.cleaner));
+                    showToast('Login successful', 'success');
+                    setTimeout(initDashboard, 500);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                showToast('Login failed', 'error');
+            }
+        }
+
+        document.getElementById('login-form').addEventListener('submit', login);
+
+        function initDashboard() {
+            const token = localStorage.getItem('cleaner_token');
+            if (!token) return;
+
+            const cleaner = JSON.parse(localStorage.getItem('cleaner'));
+            document.getElementById('user-name').textContent = cleaner.name;
+            const blocksStr = (cleaner.blocks && Array.isArray(cleaner.blocks)) ? cleaner.blocks.join(', ') : 'None';
+            document.getElementById('assigned-blocks').textContent = `Blocks: ${blocksStr}`;
+
+            // Dynamic text based on ID prefix
+            const empId = cleaner.employeeId.toUpperCase();
+            let roleName = 'Employee';
+            let roleIcon = '👷';
+            let avatarChar = 'E';
+
+            if (empId.startsWith('CLN')) {
+                roleName = 'Cleaner';
+                roleIcon = '🧹';
+                avatarChar = 'C';
+            } else if (empId.startsWith('CAR')) {
+                roleName = 'Carpenter';
+                roleIcon = '🔨';
+                avatarChar = 'C';
+            } else if (empId.startsWith('ELE')) {
+                roleName = 'Electrician';
+                roleIcon = '⚡';
+                avatarChar = 'E';
+            }
+
+            document.getElementById('sidebar-title').textContent = `${roleName} Portal`;
+            document.getElementById('user-role-text').textContent = roleName;
+            document.getElementById('sidebar-icon').textContent = roleIcon;
+            document.getElementById('sidebar-avatar').textContent = avatarChar;
+
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('dashboard-section').style.display = 'flex';
+
+            showView('pending'); // Default view
+        }
+
+        function showView(view, el) {
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            if (el) el.classList.add('active');
+            else if (!el && view === 'pending') document.querySelector('.nav-item').classList.add('active'); // Default active
+
+            const mainContent = document.querySelector('.main-content');
+            mainContent.style.opacity = '0';
+
+            setTimeout(() => {
+                document.getElementById('pending-view').style.display = 'none';
+                document.getElementById('active-view').style.display = 'none';
+                document.getElementById('history-view').style.display = 'none';
+
+                if (view === 'pending') {
+                    document.getElementById('pending-view').style.display = 'block';
+                    fetchPending();
+                } else if (view === 'active') {
+                    document.getElementById('active-view').style.display = 'block';
+                    fetchRequests();
+                } else if (view === 'history') {
+                    document.getElementById('history-view').style.display = 'block';
+                    fetchRequests();
+                }
+                mainContent.style.opacity = '1';
+            }, 200);
+        }
+
+        async function fetchPending() {
+            const token = localStorage.getItem('cleaner_token');
+            const res = await fetch(`${API_URL}/requests/pending`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const reqs = await res.json();
+
+            const grid = document.getElementById('pending-requests');
+            grid.innerHTML = '';
+
+            if (reqs.length === 0) {
+                grid.innerHTML = '<div class="text-muted" style="text-align:center; padding:2rem;">No pending requests in your blocks.</div>';
+                return;
+            }
+
+            reqs.forEach((req, index) => {
+                const card = document.createElement('div');
+                card.className = 'request-card';
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.innerHTML = `
+                    <div class="request-header">
+                        <span class="request-id">#${req.id}</span>
+                        <span class="request-status status-pending">PENDING</span>
+                    </div>
+                    <div class="card-title">Room ${req.room_number} (${req.block} Block)</div>
+                    <p class="portal-desc" style="margin: 0.5rem 0;">${req.type}</p>
+                    ${req.instructions ? `<p class="text-muted text-sm">"${req.instructions}"</p>` : ''}
+                    <button class="btn btn-primary btn-block" style="margin-top: 1rem;" onclick="acceptTask('${req.id}')">
+                        Accept Task
+                    </button>
+                    <div class="text-xs text-muted mt-2"><i data-lucide="user" style="width:12px; display:inline"></i> Requested by ${req.student_name}</div>
+                `;
+                grid.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        async function fetchRequests() {
+            const token = localStorage.getItem('cleaner_token');
+            const res = await fetch(`${API_URL}/requests`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const reqs = await res.json();
+
+            const activeGrid = document.getElementById('active-requests');
+            const historyGrid = document.getElementById('history-requests');
+            if (activeGrid) activeGrid.innerHTML = '';
+            if (historyGrid) historyGrid.innerHTML = '';
+
+            reqs.forEach((req, index) => {
+                const card = document.createElement('div');
+                card.className = 'request-card';
+                card.style.animationDelay = `${index * 0.1}s`;
+
+                if (['in_progress', 'accepted'].includes(req.status)) {
+                    if (!activeGrid) return;
+                    card.innerHTML = `
+                        <div class="request-header">
+                            <span class="request-id">#${req.id}</span>
+                            <span class="request-status status-in_progress">IN PROGRESS</span>
+                        </div>
+                        <div class="card-title">Room ${req.room_number} (${req.block} Block)</div>
+                        <p class="portal-desc" style="margin: 0.5rem 0;">${req.type}</p>
+                        ${req.instructions ? `<p class="text-muted text-sm">"${req.instructions}"</p>` : ''}
+                        <div style="margin-top: 1rem;">
+                            <button class="btn btn-success btn-block" onclick="openScanner('${req.id}')">
+                                <i data-lucide="scan-line"></i> Verify & Complete
+                            </button>
+                        </div>
+                         <div class="text-xs text-muted mt-2">Accepted: ${new Date(req.accepted_at).toLocaleString()}</div>
+                    `;
+                    activeGrid.appendChild(card);
+                } else if (req.status === 'completed') {
+                    if (!historyGrid) return;
+                    let ratingHtml = '<div class="text-muted mt-2" style="font-size:0.9rem">Not rated yet</div>';
+                    if (req.rating) {
+                        ratingHtml = `
+                            <div class="mt-2" style="background: rgba(255,255,255,0.05); padding: 0.75rem; border-radius: 8px;">
+                                <div class="text-warning">Rating: ${'★'.repeat(req.rating)}${'☆'.repeat(5 - req.rating)}</div>
+                                ${req.feedback ? `<div class="text-xs text-muted mt-1">"${req.feedback}"</div>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    card.innerHTML = `
+                        <div class="request-header">
+                            <span class="request-id">#${req.id}</span>
+                            <span class="request-status status-completed">COMPLETED</span>
+                        </div>
+                        <div class="card-title">Room ${req.room_number} (${req.block} Block)</div>
+                         <p class="portal-desc" style="margin: 0.5rem 0;">${req.type}</p>
+                        <div class="text-xs text-muted mt-2" style="display:grid; gap:4px">
+                             <div>Accepted: ${new Date(req.accepted_at).toLocaleString()}</div>
+                             <div>Completed: ${new Date(req.completed_at).toLocaleString()}</div>
+                        </div>
+                        ${ratingHtml}
+                    `;
+                    historyGrid.appendChild(card);
+                }
+            });
+
+            if (activeGrid && activeGrid.children.length === 0) activeGrid.innerHTML = '<div class="text-muted" style="text-align:center; padding:2rem">No active jobs.</div>';
+            if (historyGrid && historyGrid.children.length === 0) historyGrid.innerHTML = '<div class="text-muted" style="text-align:center; padding:2rem">No cleaning history.</div>';
+            lucide.createIcons();
+        }
+
+        async function acceptTask(id) {
+            const token = localStorage.getItem('cleaner_token');
+            const res = await fetch(`${API_URL}/requests/${id}/accept`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                showToast('Task Accepted!', 'success');
+                showView('active');
+            } else {
+                showToast('Failed to accept task', 'error');
+            }
+        }
+
+        // Global variable to track which task is being scanned
+        let currentScanTaskId = null;
+
+        function openScanner(taskId) {
+            currentScanTaskId = taskId;
+            document.getElementById('scanner-modal').style.display = 'flex';
+        }
+
+        function closeScanner() {
+            document.getElementById('scanner-modal').style.display = 'none';
+            document.getElementById('qr-input').value = ''; // Reset input
+            currentScanTaskId = null;
+        }
+
+        async function handleScan(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                showToast("Scanning image...", "info");
+
+                try {
+                    const html5QrCode = new Html5Qrcode("reader");
+                    const decodedText = await html5QrCode.scanFile(file, true);
+
+                    console.log("Decoded:", decodedText);
+                    html5QrCode.clear();
+
+                    // Send DECODED TEXT to backend (not image)
+                    const token = localStorage.getItem('cleaner_token');
+                    const res = await fetch(`${API_URL}/requests/${currentScanTaskId}/complete`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ qrData: decodedText })
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        showToast('Verified! Job Completed.', 'success');
+                        closeScanner();
+                        showView('history');
+                    } else {
+                        showToast(data.error || 'Verification Failed', 'error');
+                    }
+
+                } catch (err) {
+                    console.error("Scan error:", err);
+                    showToast('Could not find QR Code in image.', 'error');
+                }
+            }
+        }
+
+
+        function logout() {
+            localStorage.removeItem('cleaner_token');
+            localStorage.removeItem('cleaner');
+            location.reload();
+        }
+
+        if (localStorage.getItem('cleaner_token')) {
+            initDashboard();
+        }
+    </script>
+
+    <!-- QR Scanner Modal -->
+    <div id="scanner-modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; bg-black/80; backdrop-filter: blur(5px); z-index: 100; align-items: center; justify-content: center; background: rgba(0,0,0,0.8);">
+        <div
+            style="background: var(--surface); padding: 2rem; border-radius: 16px; width: 90%; max-width: 400px; text-align: center; border: 1px solid rgba(255,255,255,0.1);">
+            <h2 style="margin-bottom: 1rem; color: white;">Scan Student QR</h2>
+            <p class="text-muted" style="margin-bottom: 2rem;">Upload a photo of the QR code to verify completion.</p>
+
+            <label class="btn btn-primary btn-block"
+                style="display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;">
+                <i data-lucide="camera"></i> Take Photo / Upload
+                <input type="file" id="qr-input" accept="image/*" capture="environment" style="display: none;"
+                    onchange="handleScan(this)">
+            </label>
+
+            <button class="btn btn-outline btn-block mt-3"
+                style="width: 100%; margin-top: 1rem; background: transparent; border: 1px solid rgba(255,255,255,0.2); color:white;"
+                onclick="closeScanner()">
+                Cancel
+            </button>
+        </div>
+    </div>
+</body>
+
+</html>
