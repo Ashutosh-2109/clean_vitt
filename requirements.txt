@@ -10,3 +10,4 @@ gunicorn
 opencv-python-headless
 numpy
 pyzbar
+flask-cors

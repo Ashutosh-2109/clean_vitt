@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android
+.gradle/
+Captures/
+*.apk
+*.aar
+*.jks
+local.properties
+# android/ (You might want to commit this, but node_modules inside it should be ignored)
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# SQLite
+*.db

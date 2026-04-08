@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clean VIT - Student Portal</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="css/styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -175,7 +175,9 @@
 
     <script>
         lucide.createIcons();
-        const API_URL = '/api';
+        // API Configuration (Production)
+        const BASE_URL = 'https://cleanvitt.vercel.app';
+        const API_URL = BASE_URL + '/api';
 
         // Supabase Initialization
         // Use Flask Jinja variables if available, otherwise fetch from config (for static file compatibility)

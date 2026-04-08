@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clean VIT - Cleaner Portal</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="css/styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
@@ -103,7 +103,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         lucide.createIcons();
-        const API_URL = '/api';
+        // API Configuration (Production)
+        const BASE_URL = 'https://cleanvitt.vercel.app';
+        const API_URL = BASE_URL + '/api';
 
         // Supabase Init
         let supabaseClient = null;
@@ -427,7 +429,7 @@
 
     <!-- QR Scanner Modal -->
     <div id="scanner-modal"
-        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; bg-black/80; backdrop-filter: blur(5px); z-index: 100; align-items: center; justify-content: center; background: rgba(0,0,0,0.8);">
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; backdrop-filter: blur(5px); z-index: 100; align-items: center; justify-content: center; background: rgba(0,0,0,0.8);">
         <div
             style="background: var(--surface); padding: 2rem; border-radius: 16px; width: 90%; max-width: 400px; text-align: center; border: 1px solid rgba(255,255,255,0.1);">
             <h2 style="margin-bottom: 1rem; color: white;">Scan Student QR</h2>

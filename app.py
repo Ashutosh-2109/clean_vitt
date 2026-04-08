@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, send_from_directory, render_template, g
+from flask_cors import CORS
 import os
 import io
 import base64
@@ -21,6 +22,7 @@ except ImportError:
 
 # ----------------- CONFIGURATION -----------------
 app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app)
 app.secret_key = 'cleanvit_secret_key_2024_vitvellore'
 
 # Load environment variables (Create a .env file locally)
