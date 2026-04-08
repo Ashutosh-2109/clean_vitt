@@ -241,6 +241,12 @@
         async function signInWithGoogle() {
             if (!_supabase) return showToast("Supabase not initialized", "error");
 
+            // Check if running on Capacitor/Android
+            const isMobile = window.Capacitor && window.Capacitor.platform !== 'web';
+            const redirectTo = isMobile 
+                ? 'com.cleanvit.app://student' 
+                : window.location.origin + '/student';
+
             const { data, error } = await _supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
@@ -248,7 +254,7 @@
                         hd: 'vitstudent.ac.in', // Host domain restriction hint
                         prompt: 'select_account'
                     },
-                    redirectTo: window.location.origin + '/student'
+                    redirectTo: redirectTo
                 }
             });
 

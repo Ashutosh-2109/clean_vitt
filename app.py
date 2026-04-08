@@ -22,7 +22,7 @@ except ImportError:
 
 # ----------------- CONFIGURATION -----------------
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 app.secret_key = 'cleanvit_secret_key_2024_vitvellore'
 
 # Load environment variables (Create a .env file locally)
