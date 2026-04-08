@@ -192,8 +192,8 @@
             // Check if it starts with '{' which indicates the template tag wasn't replaced
             if (sbUrl.startsWith("{")) {
                 try {
-                    const res = await fetch('/api/config');
-                    const config = await res.json();
+                const res = await fetch(`${API_URL}/config`);
+                const config = await res.json();
                     sbUrl = config.supabaseUrl;
                     sbKey = config.supabaseKey;
                 } catch (e) {

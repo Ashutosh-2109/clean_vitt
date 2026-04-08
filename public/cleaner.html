@@ -112,7 +112,7 @@
 
         async function initSupabase() {
             try {
-                const res = await fetch('/api/config');
+                const res = await fetch(`${API_URL}/config`);
                 const config = await res.json();
                 supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
 
