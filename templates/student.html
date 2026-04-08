@@ -211,6 +211,21 @@
                         handleGoogleLogin(session.user);
                     }
                 });
+
+                // --- CAPACITOR DEEP LINK HANDLING ---
+                if (window.Capacitor) {
+                    // Listen for deep link events
+                    window.Capacitor.Plugins.App.addListener('appUrlOpen', data => {
+                        console.log('App opened with URL:', data.url);
+                        const url = new URL(data.url);
+                        const hash = url.hash;
+                        
+                        // If we have a hash (auth token), redirect the internal WebView to it
+                        if (hash) {
+                            window.location.href = window.location.origin + window.location.pathname + hash;
+                        }
+                    });
+                }
             }
         }
 
